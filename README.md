@@ -1,8 +1,9 @@
 # Transbot - Transmission Telegram Bot 🚀
 
 [![Python Tests and Docker Release](https://github.com/fishyo/transBot/actions/workflows/tests.yml/badge.svg)](https://github.com/fishyo/transBot/actions/workflows/tests.yml)
-[![Docker Image Version](https://img.shields.io/github/v/release/fishyo/transBot?label=version&color=blue)](https://github.com/fishyo/transBot/releases)
-[![Container Registry](https://img.shields.io/badge/registry-GHCR-orange.svg)](https://github.com/fishyo/transBot/pkgs/container/transbot)
+[![GHCR Registry](https://img.shields.io/badge/registry-ghcr.io%2Ffishyo%2Ftransbot-blue?logo=docker&logoColor=white)](https://github.com/fishyo/transBot/pkgs/container/transbot)
+[![Docker Image Version](https://img.shields.io/badge/version-latest-brightgreen?logo=github)](https://github.com/fishyo/transBot/pkgs/container/transbot)
+
 
 这是一个专为个人 NAS/OMV 挂载环境打造的 **Transmission Telegram 智能控制机器人**。它能通过 Telegram 消息，让您随时随地远程控制下载、监控磁盘空间、管理种子，以及接收下载完成推送。
 
