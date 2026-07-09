@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   transmission-bot:
-    build: .
+    image: ghcr.io/fishyo/transbot:latest
     container_name: transmission-telegram-bot
     restart: unless-stopped
     volumes:
