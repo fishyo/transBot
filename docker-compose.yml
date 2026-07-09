@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  transmission-bot:
+    build: .
+    container_name: transmission-telegram-bot
+    restart: unless-stopped
+    volumes:
+      # 挂载数据持久化目录
+      - ./data:/app/data
+      # 挂载 Transmission 的下载盘，以便机器人进行目录浏览和文件夹创建
+      - /srv/dev-disk-by-uuid-3db8b648-28d3-4368-94d7-e7ac125a894b/passport:/downloads
+    env_file:
+      - .env

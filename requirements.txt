@@ -1,0 +1,4 @@
+python-telegram-bot[job-queue]>=20.0
+transmission-rpc>=7.0.3
+python-dotenv>=1.0.0
+pytest>=7.0.0
