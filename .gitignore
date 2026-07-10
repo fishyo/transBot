@@ -8,3 +8,6 @@ __pycache__/
 
 # App Data
 data/
+
+# Analysis docs
+*-analysis.md
