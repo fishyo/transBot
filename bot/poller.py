@@ -16,6 +16,16 @@ class CompletionPoller:
     def __init__(self):
         self.is_first_run = True
 
+    def is_torrent_completed(self, t) -> bool:
+        """
+        Determines if a torrent is fully downloaded.
+        Avoids false positives for newly added magnet links that don't have metadata yet.
+        """
+        metadata_complete = getattr(t, 'metadata_percent_complete', 1.0) >= 1.0
+        has_files = getattr(t, 'total_size', 0) > 0
+        download_complete = (getattr(t, 'left_until_done', 0) == 0) or (getattr(t, 'progress', 0.0) >= 1.0)
+        return metadata_complete and has_files and download_complete
+
     async def poll_check(self, context: ContextTypes.DEFAULT_TYPE):
         """
         Periodically checks torrents for completion.
@@ -29,12 +39,7 @@ class CompletionPoller:
                 return
             
             for t in torrents:
-                # Check if torrent is completed
-                # In transmission-rpc, percent_done or progress is 1.0 (or close to it)
-                # or left_until_done is 0.
-                is_completed = (t.left_until_done == 0) or (t.progress >= 1.0)
-                
-                if is_completed:
+                if self.is_torrent_completed(t):
                     torrent_hash = t.hashString
                     
                     if not storage.is_torrent_completed_notified(torrent_hash):

@@ -64,3 +64,56 @@ def test_validate_new_dir_path():
     valid, path = validate_new_dir_path("/etc", "movies")
     assert valid is True
     assert path == "/downloads/movies"
+
+class MockTorrent:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+def test_is_torrent_completed():
+    from bot.poller import CompletionPoller
+    poller = CompletionPoller()
+
+    # Case 1: Magnet link downloading metadata (total_size=0, progress=0, left_until_done=0, metadata_percent_complete=0.0)
+    t1 = MockTorrent(
+        metadata_percent_complete=0.0,
+        total_size=0,
+        left_until_done=0,
+        progress=0.0
+    )
+    assert poller.is_torrent_completed(t1) is False
+
+    # Case 2: Torrent downloading files (metadata_percent_complete=1.0, total_size=1000, left_until_done=500, progress=0.5)
+    t2 = MockTorrent(
+        metadata_percent_complete=1.0,
+        total_size=1000,
+        left_until_done=500,
+        progress=0.5
+    )
+    assert poller.is_torrent_completed(t2) is False
+
+    # Case 3: Torrent completed (metadata_percent_complete=1.0, total_size=1000, left_until_done=0, progress=1.0)
+    t3 = MockTorrent(
+        metadata_percent_complete=1.0,
+        total_size=1000,
+        left_until_done=0,
+        progress=1.0
+    )
+    assert poller.is_torrent_completed(t3) is True
+
+    # Case 4: Normal torrent file (without metadata_percent_complete attribute) but completed
+    t4 = MockTorrent(
+        total_size=1000,
+        left_until_done=0,
+        progress=1.0
+    )
+    assert poller.is_torrent_completed(t4) is True
+
+    # Case 5: Normal torrent file downloading (without metadata_percent_complete attribute)
+    t5 = MockTorrent(
+        total_size=1000,
+        left_until_done=100,
+        progress=0.9
+    )
+    assert poller.is_torrent_completed(t5) is False
+
