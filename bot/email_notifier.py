@@ -11,7 +11,7 @@ import bot.config as config
 logger = logging.getLogger(__name__)
 
 def _send_email_sync(torrent_name: str, download_dir: str, size_str: str) -> bool:
-    """Synchronous function to send Terminal-styled email via SMTP."""
+    """Synchronous function to send Modern Minimalist Receipt (Style 2B) email via SMTP."""
     if not config.ENABLE_EMAIL_NOTIFICATION:
         return False
 
@@ -28,19 +28,20 @@ def _send_email_sync(torrent_name: str, download_dir: str, size_str: str) -> boo
         logger.warning("No recipient email address specified for email notifications.")
         return False
 
-    subject = f"💻 [Terminal] Transmission Task Completed: {torrent_name}"
+    subject = f"⚡ [Task Receipt] {torrent_name}"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    order_id = datetime.now().strftime("%Y%m%d%H%M%S")
 
     # Build Plain Text and HTML content
     text_content = (
-        f"root@omv:~# transmission-daemon --status\n"
-        f"[INFO] DOWNLOAD TASK FINISHED\n\n"
-        f"● STATUS       : COMPLETED (100% SUCCESS)\n"
-        f"● FINISH TIME  : {now_str}\n"
-        f"● FILE NAME    : {torrent_name}\n"
-        f"● DOWNLOAD DIR : {download_dir}\n"
-        f"● TOTAL SIZE   : {size_str}\n\n"
-        f"root@omv:~# _\n"
+        f"⚡ TRANSMISSION SERVICES - Task Receipt\n"
+        f"● Download Complete (100% SUCCESS)\n\n"
+        f"FILE NAME   : {torrent_name}\n"
+        f"DESTINATION : {download_dir}\n"
+        f"FILE SIZE   : {size_str}\n"
+        f"FINISH TIME : {now_str}\n"
+        f"RECEIPT ID  : TR-{order_id}\n\n"
+        f"Thank you for using Transmission NAS!\n"
     )
 
     html_content = f"""
@@ -49,137 +50,133 @@ def _send_email_sync(torrent_name: str, download_dir: str, size_str: str) -> boo
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Terminal Download Notification</title>
+        <title>Task Receipt</title>
         <style>
             body {{
                 margin: 0;
                 padding: 30px 10px;
-                background-color: #090d16;
-                font-family: 'SF Mono', Consolas, 'Courier New', Courier, monospace, sans-serif;
-                color: #c9d1d9;
+                background-color: #f8fafc;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                color: #0f172a;
             }}
-            .terminal-window {{
-                max-width: 520px;
+            .receipt-card {{
+                max-width: 420px;
                 margin: 0 auto;
-                background-color: #0d1117;
-                border: 1px solid #30363d;
-                border-radius: 10px;
-                overflow: hidden;
-                box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+                background-color: #ffffff;
+                border-radius: 16px;
+                padding: 28px 24px;
+                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+                border: 1px solid #e2e8f0;
             }}
-            .terminal-bar {{
-                background-color: #161b22;
-                padding: 10px 14px;
-                display: flex;
-                align-items: center;
-                border-bottom: 1px solid #30363d;
+            .card-header {{
+                border-bottom: 1px solid #f1f5f9;
+                padding-bottom: 16px;
+                margin-bottom: 20px;
             }}
-            .dot {{
-                height: 12px;
-                width: 12px;
-                border-radius: 50%;
-                display: inline-block;
-                margin-right: 8px;
-            }}
-            .dot-red {{ background-color: #ff5f56; }}
-            .dot-yellow {{ background-color: #ffbd2e; }}
-            .dot-green {{ background-color: #27c93f; }}
-            .terminal-title {{
-                color: #8b949e;
-                font-size: 12px;
-                margin-left: auto;
-                margin-right: auto;
-                font-weight: bold;
-                letter-spacing: 0.5px;
-            }}
-            .terminal-body {{
-                padding: 20px;
+            .brand-logo {{
                 font-size: 13px;
-                line-height: 1.7;
+                font-weight: 800;
+                color: #3b82f6;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
             }}
-            .prompt {{
-                color: #58a6ff;
-                font-weight: bold;
+            .card-title {{
+                font-size: 22px;
+                font-weight: 800;
+                color: #0f172a;
+                margin-top: 4px;
+                letter-spacing: -0.5px;
             }}
-            .cmd {{
-                color: #f0f6fc;
-            }}
-            .status-box {{
-                border-left: 3px solid #3fb950;
-                background-color: rgba(46, 160, 67, 0.1);
-                padding: 10px 14px;
-                margin: 14px 0;
-                border-radius: 0 6px 6px 0;
-            }}
-            .label {{
-                color: #8b949e;
+            .status-badge {{
                 display: inline-block;
-                width: 120px;
+                background-color: #dcfce7;
+                color: #15803d;
+                font-size: 12px;
+                font-weight: 700;
+                padding: 4px 12px;
+                border-radius: 20px;
+                margin-top: 8px;
             }}
-            .val-success {{
-                color: #3fb950;
-                font-weight: bold;
+            .field-group {{
+                margin-bottom: 14px;
             }}
-            .val-name {{
-                color: #79c0ff;
-                font-weight: bold;
-                word-break: break-all;
-            }}
-            .val-path {{
-                color: #d2a8ff;
-                word-break: break-all;
-            }}
-            .val-size {{
-                color: #e3b341;
-                font-weight: bold;
-            }}
-            .footer-line {{
-                margin-top: 16px;
-                padding-top: 12px;
-                border-top: 1px dashed #30363d;
-                color: #8b949e;
+            .field-label {{
                 font-size: 11px;
+                font-weight: 700;
+                color: #94a3b8;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 4px;
+            }}
+            .field-value {{
+                font-size: 14px;
+                font-weight: 600;
+                color: #1e293b;
+                background-color: #f8fafc;
+                padding: 10px 12px;
+                border-radius: 8px;
+                border: 1px solid #f1f5f9;
+                word-break: break-all;
+                line-height: 1.4;
+            }}
+            .grid-row {{
+                display: table;
+                width: 100%;
+                margin-bottom: 14px;
+            }}
+            .grid-col {{
+                display: table-cell;
+                width: 50%;
+                vertical-align: top;
+            }}
+            .card-footer {{
+                border-top: 1px solid #f1f5f9;
+                padding-top: 16px;
+                margin-top: 20px;
+                text-align: center;
+                font-size: 12px;
+                color: #94a3b8;
+                font-family: 'SF Mono', Consolas, monospace;
             }}
         </style>
     </head>
     <body>
-        <div class="terminal-window">
-            <!-- Terminal Header -->
-            <div class="terminal-bar">
-                <span class="dot dot-red"></span>
-                <span class="dot dot-yellow"></span>
-                <span class="dot dot-green"></span>
-                <span class="terminal-title">root@omv-nas:~ (bash)</span>
+        <div class="receipt-card">
+            <!-- Header -->
+            <div class="card-header">
+                <div class="brand-logo">⚡ TRANSMISSION SERVICES</div>
+                <div class="card-title">Task Receipt</div>
+                <div class="status-badge">● Download Complete</div>
             </div>
 
-            <!-- Terminal Body -->
-            <div class="terminal-body">
-                <div><span class="prompt">root@omv:~#</span> <span class="cmd">transmission-daemon --status</span></div>
-                <div style="color: #8b949e; font-size: 11px; margin-top: 4px;">[SYSTEM_EVENT] Download task completion signal received.</div>
+            <!-- Fields -->
+            <div class="field-group">
+                <div class="field-label">FILE NAME</div>
+                <div class="field-value">{torrent_name}</div>
+            </div>
 
-                <div class="status-box">
-                    <div><span class="label">● STATUS:</span> <span class="val-success">COMPLETED (100% SUCCESS)</span></div>
-                    <div><span class="label">● FINISH TIME:</span> <span style="color: #e6edf3;">{now_str}</span></div>
-                </div>
+            <div class="field-group">
+                <div class="field-label">DESTINATION</div>
+                <div class="field-value" style="color: #2563eb;">{download_dir}</div>
+            </div>
 
-                <div style="margin-bottom: 12px;">
-                    <div class="label">[TORRENT_NAME]</div>
-                    <div class="val-name">{torrent_name}</div>
+            <!-- Two Column Grid for Size & Time -->
+            <div class="field-group">
+                <div class="grid-row">
+                    <div class="grid-col" style="padding-right: 6px;">
+                        <div class="field-label">FILE SIZE</div>
+                        <div class="field-value" style="color: #16a34a; font-size: 15px; font-weight: 700;">{size_str}</div>
+                    </div>
+                    <div class="grid-col" style="padding-left: 6px;">
+                        <div class="field-label">FINISH TIME</div>
+                        <div class="field-value" style="font-size: 12px; color: #475569;">{now_str}</div>
+                    </div>
                 </div>
+            </div>
 
-                <div style="margin-bottom: 12px;">
-                    <div class="label">[DOWNLOAD_PATH]</div>
-                    <div class="val-path">{download_dir}</div>
-                </div>
-
-                <div style="margin-bottom: 12px;">
-                    <div class="label">[TOTAL_SIZE]</div>
-                    <div class="val-size">{size_str}</div>
-                </div>
-
-                <div class="footer-line">
-                    <span class="prompt">root@omv:~#</span> _
-                </div>
+            <!-- Footer -->
+            <div class="card-footer">
+                RECEIPT ID: TR-{order_id}
             </div>
         </div>
     </body>
@@ -210,7 +207,7 @@ def _send_email_sync(torrent_name: str, download_dir: str, size_str: str) -> boo
                 server.login(config.SMTP_USER, config.SMTP_PASSWORD)
                 server.sendmail(config.SMTP_USER, recipients, msg.as_string())
         
-        logger.info(f"Terminal-style email notification successfully sent for torrent: {torrent_name}")
+        logger.info(f"Modern receipt-style email notification successfully sent for torrent: {torrent_name}")
         return True
     except Exception as e:
         logger.error(f"Failed to send email notification for '{torrent_name}': {e}")

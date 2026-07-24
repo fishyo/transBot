@@ -48,3 +48,7 @@ SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "true").strip().lower() in ("true", "1"
 email_to_str = os.getenv("EMAIL_TO", "")
 EMAIL_TO = [e.strip() for e in email_to_str.split(",") if e.strip()] if email_to_str else []
 
+# Custom terminal prompt host header (e.g. root@omv, nas@synology)
+TERMINAL_PROMPT_HOST = os.getenv("TERMINAL_PROMPT_HOST", "root@omv").strip()
+
+
