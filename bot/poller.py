@@ -23,7 +23,7 @@ class CompletionPoller:
         """
         metadata_complete = getattr(t, 'metadata_percent_complete', 1.0) >= 1.0
         has_files = getattr(t, 'total_size', 0) > 0
-        download_complete = (getattr(t, 'left_until_done', 0) == 0) or (getattr(t, 'progress', 0.0) >= 1.0)
+        download_complete = (getattr(t, 'left_until_done', 0) == 0) or (getattr(t, 'progress', 0.0) >= 100.0)
         return metadata_complete and has_files and download_complete
 
     async def poll_check(self, context: ContextTypes.DEFAULT_TYPE):
