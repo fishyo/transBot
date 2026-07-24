@@ -11,7 +11,7 @@ import bot.config as config
 logger = logging.getLogger(__name__)
 
 def _send_email_sync(torrent_name: str, download_dir: str, size_str: str) -> bool:
-    """Synchronous function to send Modern Minimalist Receipt (Style 2B) email via SMTP."""
+    """Synchronous function to send Style 2B (Modern Minimalist Receipt) email via SMTP."""
     if not config.ENABLE_EMAIL_NOTIFICATION:
         return False
 
@@ -51,134 +51,73 @@ def _send_email_sync(torrent_name: str, download_dir: str, size_str: str) -> boo
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Task Receipt</title>
-        <style>
-            body {{
-                margin: 0;
-                padding: 30px 10px;
-                background-color: #f8fafc;
-                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                color: #0f172a;
-            }}
-            .receipt-card {{
-                max-width: 420px;
-                margin: 0 auto;
-                background-color: #ffffff;
-                border-radius: 16px;
-                padding: 28px 24px;
-                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-                border: 1px solid #e2e8f0;
-            }}
-            .card-header {{
-                border-bottom: 1px solid #f1f5f9;
-                padding-bottom: 16px;
-                margin-bottom: 20px;
-            }}
-            .brand-logo {{
-                font-size: 13px;
-                font-weight: 800;
-                color: #3b82f6;
-                letter-spacing: 1.5px;
-                text-transform: uppercase;
-            }}
-            .card-title {{
-                font-size: 22px;
-                font-weight: 800;
-                color: #0f172a;
-                margin-top: 4px;
-                letter-spacing: -0.5px;
-            }}
-            .status-badge {{
-                display: inline-block;
-                background-color: #dcfce7;
-                color: #15803d;
-                font-size: 12px;
-                font-weight: 700;
-                padding: 4px 12px;
-                border-radius: 20px;
-                margin-top: 8px;
-            }}
-            .field-group {{
-                margin-bottom: 14px;
-            }}
-            .field-label {{
-                font-size: 11px;
-                font-weight: 700;
-                color: #94a3b8;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin-bottom: 4px;
-            }}
-            .field-value {{
-                font-size: 14px;
-                font-weight: 600;
-                color: #1e293b;
-                background-color: #f8fafc;
-                padding: 10px 12px;
-                border-radius: 8px;
-                border: 1px solid #f1f5f9;
-                word-break: break-all;
-                line-height: 1.4;
-            }}
-            .grid-row {{
-                display: table;
-                width: 100%;
-                margin-bottom: 14px;
-            }}
-            .grid-col {{
-                display: table-cell;
-                width: 50%;
-                vertical-align: top;
-            }}
-            .card-footer {{
-                border-top: 1px solid #f1f5f9;
-                padding-top: 16px;
-                margin-top: 20px;
-                text-align: center;
-                font-size: 12px;
-                color: #94a3b8;
-                font-family: 'SF Mono', Consolas, monospace;
-            }}
-        </style>
     </head>
-    <body>
-        <div class="receipt-card">
-            <!-- Header -->
-            <div class="card-header">
-                <div class="brand-logo">⚡ TRANSMISSION SERVICES</div>
-                <div class="card-title">Task Receipt</div>
-                <div class="status-badge">● Download Complete</div>
-            </div>
+    <body style="margin: 0; padding: 30px 10px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+                <td align="center">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 420px; background-color: #ffffff; border-radius: 16px; padding: 28px 24px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06); border: 1px solid #e2e8f0;">
+                        <!-- Header -->
+                        <tr>
+                            <td style="border-bottom: 1px solid #f1f5f9; padding-bottom: 16px;">
+                                <div style="font-size: 13px; font-weight: 800; color: #3b82f6; letter-spacing: 1.5px; text-transform: uppercase;">⚡ TRANSMISSION SERVICES</div>
+                                <div style="font-size: 22px; font-weight: 800; color: #0f172a; margin-top: 4px; letter-spacing: -0.5px;">Task Receipt</div>
+                                <div style="display: inline-block; background-color: #dcfce7; color: #15803d; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; margin-top: 8px;">● Download Complete</div>
+                            </td>
+                        </tr>
 
-            <!-- Fields -->
-            <div class="field-group">
-                <div class="field-label">FILE NAME</div>
-                <div class="field-value">{torrent_name}</div>
-            </div>
+                        <!-- Field 1: FILE NAME -->
+                        <tr>
+                            <td style="padding-top: 16px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">FILE NAME / 文件名称</div>
+                                <div style="font-size: 14px; font-weight: 600; color: #0f172a; background-color: #f8fafc; padding: 10px 12px; border-radius: 8px; border: 1px solid #f1f5f9; word-break: break-all; line-height: 1.4;">
+                                    {torrent_name}
+                                </div>
+                            </td>
+                        </tr>
 
-            <div class="field-group">
-                <div class="field-label">DESTINATION</div>
-                <div class="field-value" style="color: #2563eb;">{download_dir}</div>
-            </div>
+                        <!-- Field 2: DESTINATION -->
+                        <tr>
+                            <td style="padding-top: 14px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">DESTINATION / 保存路径</div>
+                                <div style="font-size: 13px; font-weight: 600; color: #2563eb; background-color: #f8fafc; padding: 10px 12px; border-radius: 8px; border: 1px solid #f1f5f9; word-break: break-all; line-height: 1.4;">
+                                    {download_dir}
+                                </div>
+                            </td>
+                        </tr>
 
-            <!-- Two Column Grid for Size & Time -->
-            <div class="field-group">
-                <div class="grid-row">
-                    <div class="grid-col" style="padding-right: 6px;">
-                        <div class="field-label">FILE SIZE</div>
-                        <div class="field-value" style="color: #16a34a; font-size: 15px; font-weight: 700;">{size_str}</div>
-                    </div>
-                    <div class="grid-col" style="padding-left: 6px;">
-                        <div class="field-label">FINISH TIME</div>
-                        <div class="field-value" style="font-size: 12px; color: #475569;">{now_str}</div>
-                    </div>
-                </div>
-            </div>
+                        <!-- Two Columns: FILE SIZE & TIME -->
+                        <tr>
+                            <td style="padding-top: 14px;">
+                                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td width="50%" style="padding-right: 6px; vertical-align: top;">
+                                            <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">FILE SIZE / 体积</div>
+                                            <div style="font-size: 15px; font-weight: 700; color: #16a34a; background-color: #f8fafc; padding: 10px 12px; border-radius: 8px; border: 1px solid #f1f5f9;">
+                                                {size_str}
+                                            </div>
+                                        </td>
+                                        <td width="50%" style="padding-left: 6px; vertical-align: top;">
+                                            <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">TIME / 完成时间</div>
+                                            <div style="font-size: 12px; font-weight: 600; color: #475569; background-color: #f8fafc; padding: 10px 12px; border-radius: 8px; border: 1px solid #f1f5f9;">
+                                                {now_str}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
 
-            <!-- Footer -->
-            <div class="card-footer">
-                RECEIPT ID: TR-{order_id}
-            </div>
-        </div>
+                        <!-- Footer -->
+                        <tr>
+                            <td style="border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 20px; text-align: center; font-size: 11px; color: #94a3b8; font-family: 'SF Mono', Consolas, monospace;">
+                                RECEIPT ID: TR-{order_id}
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
     </body>
     </html>
     """
