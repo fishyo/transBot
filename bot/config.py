@@ -33,3 +33,18 @@ try:
     POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
 except ValueError:
     POLL_INTERVAL = 10
+
+# Email Notification Config (Optional)
+ENABLE_EMAIL_NOTIFICATION = os.getenv("ENABLE_EMAIL_NOTIFICATION", "false").strip().lower() in ("true", "1", "yes")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "")
+try:
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+except ValueError:
+    SMTP_PORT = 465
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "true").strip().lower() in ("true", "1", "yes")
+
+email_to_str = os.getenv("EMAIL_TO", "")
+EMAIL_TO = [e.strip() for e in email_to_str.split(",") if e.strip()] if email_to_str else []
+

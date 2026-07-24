@@ -18,7 +18,7 @@
 3. **📊 超简洁状态监控 (`/status`)**：精简版展示正在下载/做种的任务状态，实时显示 OMV 挂载硬盘的剩余空间以及备用限速（乌龟模式）状态。
 4. **🎛️ 独立控制中心 (`/manage`)**：支持对具体种子进行单独管理，提供暂停/恢复、删除（可选保留或删除本地数据）及**直接重命名文件夹**的功能。
 5. **🐢 乌龟限速模式一键切换 (`/turtle`)**：一键开关 Transmission 备用速度限制，方便网络错峰管理。
-6. **🔔 完成通知推送**：后台常驻 poller 进程，下载完成时会自动发送 Telegram 通知消息。
+6. **🔔 完成通知推送**：后台常驻 poller 进程，下载完成时自动发送 Telegram 消息通知，并支持可选的 **SMTP 邮件推送**（适配国内 iOS 推送不佳场景）。
 7. **🐳 生产级免编译部署**：使用 GitHub Actions 自动构建并发布至 GHCR，NAS 部署无需本地 `build`，开箱即用。
 8. **🛡️ 用户权限锁与安全保障**：在配置中锁定您的专属 Telegram ID。对新建文件夹名称使用 `os.path.commonpath` 进行校验，防范路径越界和目录逃逸。
 
@@ -57,6 +57,16 @@ TRANSMISSION_PATH=/transmission/rpc
 # 机器人基本设置
 DEFAULT_DOWNLOAD_DIR=/downloads/complete
 POLL_INTERVAL=10
+
+# 邮件通知设置 (可选)
+ENABLE_EMAIL_NOTIFICATION=true
+SMTP_SERVER=smtp.qq.com
+SMTP_PORT=465
+SMTP_USER=your_email@qq.com
+SMTP_PASSWORD=your_smtp_auth_code
+SMTP_USE_SSL=true
+EMAIL_TO=recipient@example.com
+
 ```
 
 ### 2. 配置 Compose 编排 (`docker-compose.yml`)

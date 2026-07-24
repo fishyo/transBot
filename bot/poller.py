@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes
 import bot.config as config
 from bot.transmission import TransmissionWrapper
 from bot.storage import Storage
+from bot.email_notifier import send_email_notification_async
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +50,12 @@ class CompletionPoller:
                             continue
                             
                         # Send notification to all allowed users
+                        size_str = t.format_size() if hasattr(t, 'format_size') else str(t.total_size)
                         msg = (
                             f"🔔 **Download Completed!**\n\n"
                             f"📛 **Name:** {t.name}\n"
                             f"📁 **Location:** `{t.download_dir}`\n"
-                            f"💾 **Size:** {t.format_size() if hasattr(t, 'format_size') else str(t.total_size)}"
+                            f"💾 **Size:** {size_str}"
                         )
                         
                         for user_id in config.ALLOWED_USER_IDS:
@@ -65,6 +67,17 @@ class CompletionPoller:
                                 )
                             except Exception as e:
                                 logger.error(f"Failed to send completion notification to user {user_id}: {e}")
+
+                        # Send optional email notification
+                        if config.ENABLE_EMAIL_NOTIFICATION:
+                            try:
+                                await send_email_notification_async(
+                                    torrent_name=t.name,
+                                    download_dir=t.download_dir,
+                                    size_str=size_str
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to trigger email notification: {e}")
                                 
                         # Save in DB
                         storage.add_completed_torrent(torrent_hash)

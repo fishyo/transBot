@@ -126,3 +126,33 @@ def test_is_torrent_completed():
     assert poller.is_torrent_completed(t6) is False
 
 
+def test_email_notifier_disabled():
+    from bot.email_notifier import _send_email_sync
+    import bot.config as config
+    config.ENABLE_EMAIL_NOTIFICATION = False
+    assert _send_email_sync("Test.mkv", "/downloads", "1.0 GB") is False
+
+def test_email_notifier_enabled_mock(monkeypatch):
+    from unittest.mock import MagicMock
+    from bot.email_notifier import _send_email_sync
+    import bot.config as config
+
+    config.ENABLE_EMAIL_NOTIFICATION = True
+    config.SMTP_SERVER = "smtp.test.com"
+    config.SMTP_PORT = 465
+    config.SMTP_USER = "test@example.com"
+    config.SMTP_PASSWORD = "secretpassword"
+    config.SMTP_USE_SSL = True
+    config.EMAIL_TO = ["recipient@example.com"]
+
+    mock_smtp = MagicMock()
+    monkeypatch.setattr("smtplib.SMTP_SSL", lambda host, port, timeout: mock_smtp)
+    mock_smtp.__enter__.return_value = mock_smtp
+
+    res = _send_email_sync("Silo.S03E04.mkv", "/downloads", "2.5 GB")
+    assert res is True
+    mock_smtp.login.assert_called_once_with("test@example.com", "secretpassword")
+    assert mock_smtp.sendmail.called
+
+
+
