@@ -65,3 +65,13 @@ class Storage:
 
     def get_recent_dirs(self) -> List[str]:
         return self.recent_dirs
+
+    def clear_recent_dirs(self):
+        self.recent_dirs = []
+        self.save()
+
+    def remove_recent_dir(self, directory: str):
+        if directory in self.recent_dirs:
+            self.recent_dirs.remove(directory)
+            self.save()
+

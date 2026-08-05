@@ -158,6 +158,22 @@ def get_subdirs(parent_dir: str) -> list:
         logger.error(f"Error listing subdirectories of {parent_dir}: {e}")
         return []
 
+def extract_torrents_from_text(text: str) -> list:
+    """Extracts all magnet links and HTTP/HTTPS URLs from text."""
+    if not text:
+        return []
+    pattern = r'(?:magnet:\?[^\s<>"\'`]+|https?://[^\s<>"\'`]+)'
+    matches = re.findall(pattern, text, re.IGNORECASE)
+    
+    results = []
+    seen = set()
+    for item in matches:
+        item_clean = item.strip().rstrip('.,);:')
+        if item_clean and item_clean not in seen:
+            seen.add(item_clean)
+            results.append(item_clean)
+    return results
+
 async def show_directory_browser(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None):
     """Renders the directory browser inline keyboard."""
     current_path = context.user_data.get("current_browse_path", "/downloads")
@@ -167,13 +183,24 @@ async def show_directory_browser(update: Update, context: ContextTypes.DEFAULT_T
     # Store subdirs in context for lookup
     context.user_data["browse_subdirs"] = subdirs
     
+    pending_torrents = context.user_data.get("pending_torrents", [])
+    if not pending_torrents and "pending_torrent" in context.user_data:
+        pending_torrents = [context.user_data["pending_torrent"]]
+    
+    has_pending = len(pending_torrents) > 0
+    pending_count = len(pending_torrents)
+
     # Header text
     escaped_path = html.escape(current_path)
-    msg = (
-        f"📂 <b>Directory Browser</b>\n\n"
-        f"📍 <b>Current Path:</b> <code>{escaped_path}</code>\n\n"
-        f"Select a folder below to navigate inside it, or choose one of the options:"
-    )
+    msg_lines = [
+        "📂 <b>Directory Browser</b>\n",
+        f"📍 <b>Current Path:</b> <code>{escaped_path}</code>"
+    ]
+    if has_pending:
+        msg_lines.append(f"🔗 <b>Pending Downloads:</b> <code>{pending_count}</code> item(s)")
+        
+    msg_lines.append("\nSelect a folder below to navigate inside it, or choose one of the options:")
+    msg = "\n".join(msg_lines)
     
     keyboard = []
     
@@ -186,8 +213,7 @@ async def show_directory_browser(update: Update, context: ContextTypes.DEFAULT_T
         keyboard.append([InlineKeyboardButton(f"➕ ... and {len(subdirs) - 10} more folders", callback_data="noop")])
 
     # Confirmation and creation buttons
-    has_pending = "pending_torrent" in context.user_data
-    confirm_text = "✅ Select for Download" if has_pending else "📌 Set as Default Path"
+    confirm_text = f"✅ Download ({pending_count}) to Here" if (has_pending and pending_count > 1) else ("✅ Select for Download" if has_pending else "📌 Set as Default Path")
     keyboard.append([
         InlineKeyboardButton(confirm_text, callback_data="nav_confirm")
     ])
@@ -195,10 +221,16 @@ async def show_directory_browser(update: Update, context: ContextTypes.DEFAULT_T
         InlineKeyboardButton("🆕 Create Folder Here", callback_data="nav_create_dir")
     ])
     
+    # Recent Directories section
+    recent_dirs = storage.get_recent_dirs()
+    if recent_dirs:
+        for idx, rdir in enumerate(recent_dirs[:5]):
+            rdir_display = rdir if len(rdir) <= 30 else f".../{os.path.basename(rdir)}"
+            keyboard.append([InlineKeyboardButton(f"🕒 {rdir_display}", callback_data=f"nav_recent:{idx}")])
+        keyboard.append([InlineKeyboardButton("🗑 Clear Recent History", callback_data="clear_recent")])
+
     # Navigation buttons (Back / Cancel)
     nav_row = []
-    # Only allow going back if we are deeper than /downloads
-    # Comparing lowercase paths to prevent case sensitivity issues on Windows/Linux mounts
     if current_path.strip("/").lower() != "downloads":
         nav_row.append(InlineKeyboardButton("↩️ Back", callback_data="nav_parent"))
     nav_row.append(InlineKeyboardButton("❌ Cancel", callback_data="dir_cancel"))
@@ -214,10 +246,9 @@ async def show_directory_browser(update: Update, context: ContextTypes.DEFAULT_T
 @check_user
 async def handle_torrent_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Invoked when user sends a text message that could be a magnet link/URL or uploads a document.
+    Invoked when user sends a text message that could contain magnet link(s)/URL(s) or uploads a document.
     """
-    magnet_or_url = ""
-    torrent_bytes = None
+    torrents = []
     file_name = ""
 
     if update.message.document:
@@ -226,22 +257,24 @@ async def handle_torrent_input(update: Update, context: ContextTypes.DEFAULT_TYP
             file_name = doc.file_name
             telegram_file = await doc.get_file()
             torrent_bytes = await telegram_file.download_as_bytearray()
-            torrent_bytes = bytes(torrent_bytes)
+            torrents.append(bytes(torrent_bytes))
         else:
             await update.message.reply_text("❌ Provided file is not a torrent file.")
             return ConversationHandler.END
-    else:
+    elif update.message.text:
         text = update.message.text.strip()
-        if text.startswith("magnet:") or re.match(r'^https?://', text):
-            magnet_or_url = text
-        else:
+        torrents = extract_torrents_from_text(text)
+        if not torrents:
             await update.message.reply_text(
-                "❌ Please send a valid magnet link, HTTP/HTTPS torrent URL, or upload a `.torrent` file."
+                "❌ Please send valid magnet link(s), HTTP/HTTPS torrent URL(s), or upload a `.torrent` file."
             )
             return ConversationHandler.END
 
+    if not torrents:
+        return ConversationHandler.END
+
     # Store the input in user data
-    context.user_data["pending_torrent"] = torrent_bytes or magnet_or_url
+    context.user_data["pending_torrents"] = torrents
     context.user_data["pending_filename"] = file_name
     
     # Initialize the browse path to /downloads
@@ -252,39 +285,85 @@ async def handle_torrent_input(update: Update, context: ContextTypes.DEFAULT_TYP
     return WAITING_FOR_DIR
 
 async def process_torrent_addition(update: Update, context: ContextTypes.DEFAULT_TYPE, download_dir: str):
-    """Helper function to add the torrent to Transmission and reply."""
-    pending = context.user_data.get("pending_torrent")
-    if not pending:
+    """Helper function to add torrent(s) to Transmission and reply."""
+    pending_torrents = context.user_data.get("pending_torrents", [])
+    if not pending_torrents and "pending_torrent" in context.user_data:
+        pending_torrents = [context.user_data["pending_torrent"]]
+
+    if not pending_torrents:
         await update.effective_message.reply_text("❌ No pending torrent found. Please try again.")
         return
-    try:
-        # Add torrent
-        torrent = transmission.add_torrent(pending, download_dir=download_dir)
-        
-        # Save directory to recent directories
-        if download_dir:
-            storage.add_recent_dir(download_dir)
 
-        # Clear state
-        context.user_data.pop("pending_torrent", None)
-        context.user_data.pop("pending_filename", None)
-        context.user_data.pop("current_browse_path", None)
+    success_items = []
+    failed_items = []
 
-        escaped_name = html.escape(torrent.name)
-        escaped_dir = html.escape(download_dir)
-        msg = (
-            f"✅ <b>Torrent Added Successfully!</b>\n\n"
-            f"📛 <b>Name:</b> {escaped_name}\n"
-            f"📂 <b>Directory:</b> <code>{escaped_dir}</code>\n"
-            f"🆔 <b>ID:</b> <code>{torrent.id}</code>"
-        )
-        keyboard = [[InlineKeyboardButton("📊 Check Status", callback_data="status_refresh")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+    for idx, item in enumerate(pending_torrents, start=1):
+        try:
+            torrent = transmission.add_torrent(item, download_dir=download_dir)
+            success_items.append((idx, torrent))
+        except Exception as e:
+            logger.error(f"Error adding torrent item {idx}: {e}")
+            failed_items.append((idx, str(e)))
 
-        await update.effective_message.reply_text(msg, parse_mode="HTML", reply_markup=reply_markup)
+    # Save directory to recent directories if at least one download succeeded or directory was specified
+    if download_dir and (success_items or not failed_items):
+        storage.add_recent_dir(download_dir)
 
-    except Exception as e:
-        await update.effective_message.reply_text(f"❌ Error adding torrent: {str(e)}")
+    # Clear pending state
+    context.user_data.pop("pending_torrents", None)
+    context.user_data.pop("pending_torrent", None)
+    context.user_data.pop("pending_filename", None)
+    context.user_data.pop("current_browse_path", None)
+
+    escaped_dir = html.escape(download_dir)
+
+    if len(pending_torrents) == 1:
+        if success_items:
+            _, torrent = success_items[0]
+            escaped_name = html.escape(torrent.name)
+            msg = (
+                f"✅ <b>Torrent Added Successfully!</b>\n\n"
+                f"📛 <b>Name:</b> {escaped_name}\n"
+                f"📂 <b>Directory:</b> <code>{escaped_dir}</code>\n"
+                f"🆔 <b>ID:</b> <code>{torrent.id}</code>"
+            )
+        else:
+            _, err_msg = failed_items[0]
+            msg = f"❌ Error adding torrent: {html.escape(err_msg)}"
+    else:
+        if len(success_items) == len(pending_torrents):
+            msg_lines = [
+                f"✅ <b>All {len(success_items)} Torrents Added Successfully!</b>\n",
+                f"📂 <b>Directory:</b> <code>{escaped_dir}</code>\n"
+            ]
+            for idx, torrent in success_items:
+                escaped_name = html.escape(torrent.name)
+                msg_lines.append(f"{idx}. 📛 <b>{escaped_name}</b> (ID: <code>{torrent.id}</code>)")
+            msg = "\n".join(msg_lines)
+        elif success_items:
+            msg_lines = [
+                f"⚠️ <b>{len(success_items)} of {len(pending_torrents)} Torrents Added</b>\n",
+                f"📂 <b>Directory:</b> <code>{escaped_dir}</code>\n",
+                "<b>Added:</b>"
+            ]
+            for idx, torrent in success_items:
+                escaped_name = html.escape(torrent.name)
+                msg_lines.append(f"✅ {idx}. 📛 <b>{escaped_name}</b> (ID: <code>{torrent.id}</code>)")
+            msg_lines.append("\n<b>Failed:</b>")
+            for idx, err_msg in failed_items:
+                msg_lines.append(f"❌ {idx}. {html.escape(err_msg)}")
+            msg = "\n".join(msg_lines)
+        else:
+            msg_lines = [f"❌ <b>Failed to add all {len(pending_torrents)} torrents:</b>\n"]
+            for idx, err_msg in failed_items:
+                msg_lines.append(f"❌ {idx}. {html.escape(err_msg)}")
+            msg = "\n".join(msg_lines)
+
+    keyboard = [[InlineKeyboardButton("📊 Check Status", callback_data="status_refresh")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.effective_message.reply_text(msg, parse_mode="HTML", reply_markup=reply_markup)
+
 
 @check_user
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -317,8 +396,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif data == "nav_confirm":
         selected_dir = context.user_data.get("current_browse_path", "/downloads")
-        if "pending_torrent" in context.user_data:
-            await query.edit_message_text(f"⏳ Adding torrent to `{selected_dir}`...")
+        has_pending = ("pending_torrents" in context.user_data and len(context.user_data["pending_torrents"]) > 0) or ("pending_torrent" in context.user_data)
+        if has_pending:
+            pending_count = len(context.user_data.get("pending_torrents", [])) or 1
+            await query.edit_message_text(f"⏳ Adding {pending_count} torrent(s) to `{selected_dir}`...", parse_mode="Markdown")
             await process_torrent_addition(update, context, selected_dir)
         else:
             try:
@@ -333,6 +414,31 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception as e:
                 await query.edit_message_text(f"❌ Failed to set default directory: {e}")
         return ConversationHandler.END
+
+    elif data.startswith("nav_recent:"):
+        idx = int(data.split(":")[1])
+        recent_dirs = storage.get_recent_dirs()
+        if 0 <= idx < len(recent_dirs):
+            selected_dir = recent_dirs[idx]
+            has_pending = ("pending_torrents" in context.user_data and len(context.user_data["pending_torrents"]) > 0) or ("pending_torrent" in context.user_data)
+            if has_pending:
+                pending_count = len(context.user_data.get("pending_torrents", [])) or 1
+                await query.edit_message_text(f"⏳ Adding {pending_count} torrent(s) to `{selected_dir}`...", parse_mode="Markdown")
+                await process_torrent_addition(update, context, selected_dir)
+                return ConversationHandler.END
+            else:
+                context.user_data["current_browse_path"] = selected_dir
+                await show_directory_browser(update, context, query=query)
+                return WAITING_FOR_DIR
+
+    elif data == "clear_recent" or data == "dirset_clear_all":
+        storage.clear_recent_dirs()
+        await query.answer("🗑 Recent directory history cleared.", show_alert=True)
+        if "pending_torrents" in context.user_data or "pending_torrent" in context.user_data or context.user_data.get("current_browse_path"):
+            await show_directory_browser(update, context, query=query)
+        else:
+            await display_dirs(update, context, is_callback=True)
+        return WAITING_FOR_DIR
 
     elif data == "nav_create_dir":
         current_path = context.user_data.get("current_browse_path", "/downloads")
@@ -349,6 +455,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         return WAITING_FOR_DIR
 
     elif data == "dir_cancel":
+        context.user_data.pop("pending_torrents", None)
         context.user_data.pop("pending_torrent", None)
         context.user_data.pop("pending_filename", None)
         context.user_data.pop("current_browse_path", None)
@@ -461,6 +568,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif data == "nav_start":
         context.user_data["current_browse_path"] = "/downloads"
+        context.user_data.pop("pending_torrents", None)
         context.user_data.pop("pending_torrent", None)  # Ensure not adding torrent
         await show_directory_browser(update, context, query=query)
         return WAITING_FOR_DIR
@@ -482,8 +590,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 except Exception as e:
                     await query.answer(f"❌ Failed to set default: {e}", show_alert=True)
             elif action == "forget":
-                recent_dirs.pop(idx)
-                storage.save()
+                storage.remove_recent_dir(selected_dir)
                 await query.answer(f"🗑 Forgot path: {selected_dir}")
                 
         await display_dirs(update, context, is_callback=True)
@@ -535,8 +642,9 @@ async def handle_new_dir_name(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Create directory on the host (since host drive is mounted to /downloads)
         os.makedirs(new_dir_path, exist_ok=True)
         
-        if "pending_torrent" in context.user_data:
-            await update.message.reply_text(f"📁 Created folder: `{new_dir_path}`\n⏳ Adding torrent...")
+        has_pending = ("pending_torrents" in context.user_data and len(context.user_data["pending_torrents"]) > 0) or ("pending_torrent" in context.user_data)
+        if has_pending:
+            await update.message.reply_text(f"📁 Created folder: `{new_dir_path}`\n⏳ Adding torrent(s)...")
             await process_torrent_addition(update, context, new_dir_path)
         else:
             client = transmission.get_client()
@@ -549,10 +657,11 @@ async def handle_new_dir_name(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         return ConversationHandler.END
     except Exception as e:
-        if "pending_torrent" in context.user_data:
+        has_pending = ("pending_torrents" in context.user_data and len(context.user_data["pending_torrents"]) > 0) or ("pending_torrent" in context.user_data)
+        if has_pending:
             await update.message.reply_text(
                 f"⚠️ Failed to create folder ({e}).\n"
-                f"Attempting to add torrent anyway (Transmission daemon might create it)..."
+                f"Attempting to add torrent(s) anyway (Transmission daemon might create it)..."
             )
             await process_torrent_addition(update, context, new_dir_path)
         else:
@@ -562,6 +671,7 @@ async def handle_new_dir_name(update: Update, context: ContextTypes.DEFAULT_TYPE
 @check_user
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels custom directory input dialog."""
+    context.user_data.pop("pending_torrents", None)
     context.user_data.pop("pending_torrent", None)
     context.user_data.pop("pending_filename", None)
     context.user_data.pop("current_browse_path", None)
@@ -675,6 +785,7 @@ async def dirs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Initialize browse path to /downloads
     context.user_data["current_browse_path"] = "/downloads"
     # Ensure there's no pending torrent (since we started from /dirs)
+    context.user_data.pop("pending_torrents", None)
     context.user_data.pop("pending_torrent", None)
     await display_dirs(update, context, is_callback=False)
     return WAITING_FOR_DIR
@@ -706,6 +817,9 @@ async def display_dirs(update: Update, context: ContextTypes.DEFAULT_TYPE, is_ca
                 InlineKeyboardButton(f"📌 Set Default {idx+1}", callback_data=f"dirset_default:{idx}"),
                 InlineKeyboardButton(f"🗑 Forget {idx+1}", callback_data=f"dirset_forget:{idx}")
             ])
+        keyboard.append([
+            InlineKeyboardButton("🗑 Clear All Recent History", callback_data="dirset_clear_all")
+        ])
     else:
         msg.append("<i>No recently used folders yet.</i>")
         
@@ -742,7 +856,7 @@ def get_conversation_handler():
     return ConversationHandler(
         entry_points=[
             MessageHandler(
-                (filters.TEXT & (filters.Regex(re.compile(r'^magnet:\?', re.IGNORECASE)) | filters.Regex(re.compile(r'^https?://', re.IGNORECASE)))) | 
+                (filters.TEXT & (filters.Regex(re.compile(r'magnet:\?', re.IGNORECASE)) | filters.Regex(re.compile(r'https?://', re.IGNORECASE)))) | 
                 filters.Document.ALL,
                 handle_torrent_input
             ),

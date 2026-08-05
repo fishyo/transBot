@@ -155,4 +155,63 @@ def test_email_notifier_enabled_mock(monkeypatch):
     assert mock_smtp.sendmail.called
 
 
+def test_extract_torrents_from_text():
+    from bot.handlers import extract_torrents_from_text
+
+    # Case 1: Empty or invalid text
+    assert extract_torrents_from_text("") == []
+    assert extract_torrents_from_text("Hello world, this is a test.") == []
+
+    # Case 2: Single magnet link
+    mag1 = "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=Movie1"
+    assert extract_torrents_from_text(mag1) == [mag1]
+
+    # Case 3: Multiple magnet links separated by newlines
+    mag2 = "magnet:?xt=urn:btih:2222222222222222222222222222222222222222&dn=Movie2"
+    mag3 = "magnet:?xt=urn:btih:3333333333333333333333333333333333333333&dn=Movie3"
+    text_multi = f"{mag1}\n{mag2}\n{mag3}"
+    assert extract_torrents_from_text(text_multi) == [mag1, mag2, mag3]
+
+    # Case 4: Multiple magnet links embedded in conversational text with trailing punctuation
+    text_convo = f"Hey! Download these:\n1. {mag1}.\n2. {mag2},\n3. {mag3})"
+    assert extract_torrents_from_text(text_convo) == [mag1, mag2, mag3]
+
+    # Case 5: HTTP/HTTPS torrent links
+    url1 = "https://example.com/test1.torrent"
+    url2 = "http://example.com/test2.torrent"
+    assert extract_torrents_from_text(f"{url1} and {url2}") == [url1, url2]
+
+    # Case 6: Duplicate links in same message
+    assert extract_torrents_from_text(f"{mag1}\n{mag1}\n{mag2}") == [mag1, mag2]
+
+
+def test_storage_recent_dirs(tmp_path):
+    from bot.storage import Storage
+
+    test_json = str(tmp_path / "test_storage.json")
+    st = Storage(filepath=test_json)
+
+    # Initial state
+    assert st.get_recent_dirs() == []
+
+    # Add directories
+    st.add_recent_dir("/downloads/movies")
+    st.add_recent_dir("/downloads/anime")
+    st.add_recent_dir("/downloads/tv")
+    assert st.get_recent_dirs() == ["/downloads/tv", "/downloads/anime", "/downloads/movies"]
+
+    # Remove single directory
+    st.remove_recent_dir("/downloads/anime")
+    assert st.get_recent_dirs() == ["/downloads/tv", "/downloads/movies"]
+
+    # Clear all recent directories
+    st.clear_recent_dirs()
+    assert st.get_recent_dirs() == []
+
+    # Reload from disk to verify persistence
+    st_reloaded = Storage(filepath=test_json)
+    assert st_reloaded.get_recent_dirs() == []
+
+
+
 
