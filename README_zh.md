@@ -6,25 +6,25 @@
 [![GHCR Registry](https://img.shields.io/badge/registry-ghcr.io%2Ffishyo%2Ftransbot-blue?logo=docker&logoColor=white)](https://github.com/fishyo/transBot/pkgs/container/transbot)
 [![Docker Image Version](https://img.shields.io/badge/version-latest-brightgreen?logo=github)](https://github.com/fishyo/transBot/pkgs/container/transbot)
 
-[English](README.md) | [简体中文](README_zh.md)
+[English](README.md) | [简体中文](README_zh.md) | [更新日志](CHANGELOG.md)
 
 ---
 
 这是一个专为个人 NAS/OMV 挂载环境打造的 **Transmission Telegram 智能控制机器人**。它能通过 Telegram 消息，让您随时随地远程控制下载、监控磁盘空间、管理种子，以及接收下载完成推送。
 
-本项目现已通过 GitHub Actions 实现持续集成（CI/CD），并在 **GitHub Container Registry (GHCR)** 发布了预编译的免编译 Docker 镜像包。您无需在 NAS 上安装任何开发依赖，即可直接一键拉取运行。
+本项目现已通过 GitHub Actions 实现持续集成与持续部署（CI/CD），并在 **GitHub Container Registry (GHCR)** 发布了预编译的 Docker 镜像包，支持 SemVer 语义化版本标签（`v*.*.*`）。您无需在 NAS 上安装任何开发依赖，即可直接一键拉取运行。
 
 ---
 
 ## 🌟 主要功能特点
 
-1. **🔗 便捷添加任务**：直接向机器人发送 **磁力链接 (Magnet Link)**、**种子 URL 地址**，或上传 **`.torrent` 种子文件** 即可开始下载。
-2. **📂 交互式目录浏览器**：添加种子时，会唤起直观的**多级目录选择器**，支持直接创建新文件夹，并选择任意子文件夹作为下载保存目标。
+1. **🔗 批量添加任务与多链接解析**：可以在单条 Telegram 消息中发送单个或**多个磁力链接 (Magnet Link)**、**种子 URL 地址**，或上传 **`.torrent` 种子文件**，机器人会自动批量解析提取并逐一添加下载任务。
+2. **📂 交互式目录浏览器与近期路径管理**：添加种子时唤起直观的**多级目录选择器**，支持直接创建新文件夹、展示并快速选择近期使用过的下载路径，并支持单条删除或一键清空近期历史。
 3. **📊 超简洁状态监控 (`/status`)**：精简版展示正在下载/做种的任务状态，实时显示 OMV 挂载硬盘的剩余空间以及备用限速（乌龟模式）状态。
-4. **🎛️ 独立控制中心 (`/manage`)**：支持对具体种子进行单独管理，提供暂停/恢复、删除（可选保留或删除本地数据）及**直接重命名文件夹**的功能。
+4. **🎛️ 独立控制中心 (`/manage`)**：支持对具体种子进行单独管理，提供暂停/恢复、删除（可选保留或删除本地数据）及**直接重命名文件夹/文件**的功能。
 5. **🐢 乌龟限速模式一键切换 (`/turtle`)**：一键开关 Transmission 备用速度限制，方便网络错峰管理。
-6. **🔔 完成通知推送**：后台常驻 poller 进程，下载完成时自动发送 Telegram 消息通知，并支持可选的 **SMTP 邮件推送**（适配国内 iOS 推送不佳场景）。
-7. **🐳 生产级免编译部署**：使用 GitHub Actions 自动构建并发布至 GHCR，NAS 部署无需本地 `build`，开箱即用。
+6. **🔔 多渠道完成通知推送**：后台常驻 poller 进程，下载完成时自动发送 Telegram 消息通知，并支持可选的 **SMTP 邮件推送**（采用现代极简收据风 HTML 模板，适配各类邮件客户端）。
+7. **🐳 生产级 SemVer 免编译部署**：使用 GitHub Actions 自动构建，支持按 Git Tag 自动版本打标并发布至 GHCR，NAS 部署无需本地 `build`，开箱即用。
 8. **🛡️ 用户权限锁与安全保障**：在配置中锁定您的专属 Telegram ID。对新建文件夹名称使用 `os.path.commonpath` 进行校验，防范路径越界和目录逃逸。
 
 ---
@@ -33,7 +33,7 @@
 
 * `/status` - **查看状态**。获取下载/做种简表、实时速度、Peers 连接数、磁盘可用空间及限速模式。
 * `/manage` - **控制中心**。提供种子的暂停、继续、删除及**重命名**等操作入口。
-* `/dirs` - **目录管理**。查看当前默认保存路径，或直接浏览文件夹并将其设为全局默认。
+* `/dirs` - **目录管理**。查看当前默认保存路径、快速选择近期使用目录，支持删除与清空近期路径，或浏览文件夹将其设为全局默认。
 * `/turtle` - **限速开关**。一键切换 Transmission 的乌龟限速模式。
 * `/cancel` - **取消会话**。随时终止新建文件夹、目录导航或重命名等输入对话。
 * `/help` - **使用手册**。输出详细的功能与指令对照指南。
