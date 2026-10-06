@@ -1,6 +1,14 @@
 import pytest
 from datetime import timedelta
-from bot.handlers import format_size, format_speed, format_eta, validate_new_dir_path
+from bot.handlers import (
+    format_size,
+    format_speed,
+    format_eta,
+    validate_new_dir_path,
+    get_directory_page_slice,
+    build_directory_pagination_row,
+    DIR_PAGE_SIZE
+)
 
 def test_format_size():
     assert format_size(0) == "0 B"
@@ -211,6 +219,88 @@ def test_storage_recent_dirs(tmp_path):
     # Reload from disk to verify persistence
     st_reloaded = Storage(filepath=test_json)
     assert st_reloaded.get_recent_dirs() == []
+
+
+def test_directory_page_slice():
+    # 0 items
+    page, total, start, end = get_directory_page_slice(0, 0, DIR_PAGE_SIZE)
+    assert (page, total, start, end) == (0, 1, 0, 0)
+
+    # 5 items (less than 1 page)
+    page, total, start, end = get_directory_page_slice(5, 0, 10)
+    assert (page, total, start, end) == (0, 1, 0, 5)
+
+    # Exact 10 items (exactly 1 page)
+    page, total, start, end = get_directory_page_slice(10, 0, 10)
+    assert (page, total, start, end) == (0, 1, 0, 10)
+
+    # 15 items: page 0 and page 1
+    page, total, start, end = get_directory_page_slice(15, 0, 10)
+    assert (page, total, start, end) == (0, 2, 0, 10)
+
+    page, total, start, end = get_directory_page_slice(15, 1, 10)
+    assert (page, total, start, end) == (1, 2, 10, 15)
+
+    # Clamping out-of-bounds page numbers
+    page, total, start, end = get_directory_page_slice(15, 5, 10)
+    assert (page, total, start, end) == (1, 2, 10, 15)
+
+    page, total, start, end = get_directory_page_slice(15, -2, 10)
+    assert (page, total, start, end) == (0, 2, 0, 10)
+
+    # 35 items (4 pages)
+    page, total, start, end = get_directory_page_slice(35, 2, 10)
+    assert (page, total, start, end) == (2, 4, 20, 30)
+
+    page, total, start, end = get_directory_page_slice(35, 3, 10)
+    assert (page, total, start, end) == (3, 4, 30, 35)
+
+
+def test_build_directory_pagination_row():
+    # Single page: no pagination row needed
+    assert build_directory_pagination_row(0, 1) == []
+
+    # 2 pages: first page
+    row_2_0 = build_directory_pagination_row(0, 2)
+    assert len(row_2_0) == 2
+    assert row_2_0[0].callback_data == "nav_page_info"
+    assert row_2_0[1].callback_data == "nav_page:1"
+
+    # 2 pages: second page
+    row_2_1 = build_directory_pagination_row(1, 2)
+    assert len(row_2_1) == 2
+    assert row_2_1[0].callback_data == "nav_page:0"
+    assert row_2_1[1].callback_data == "nav_page_info"
+
+    # 3 pages: middle page
+    row_3_1 = build_directory_pagination_row(1, 3)
+    assert len(row_3_1) == 3
+    assert row_3_1[0].callback_data == "nav_page:0"
+    assert row_3_1[1].callback_data == "nav_page_info"
+    assert row_3_1[2].callback_data == "nav_page:2"
+
+    # 5 pages: first page (includes fast-forward last page button)
+    row_5_0 = build_directory_pagination_row(0, 5)
+    assert len(row_5_0) == 3
+    assert row_5_0[0].callback_data == "nav_page_info"
+    assert row_5_0[1].callback_data == "nav_page:1"
+    assert row_5_0[2].callback_data == "nav_page:4"
+
+    # 5 pages: middle page (includes first, prev, info, next, last)
+    row_5_2 = build_directory_pagination_row(2, 5)
+    assert len(row_5_2) == 5
+    assert row_5_2[0].callback_data == "nav_page:0"
+    assert row_5_2[1].callback_data == "nav_page:1"
+    assert row_5_2[2].callback_data == "nav_page_info"
+    assert row_5_2[3].callback_data == "nav_page:3"
+    assert row_5_2[4].callback_data == "nav_page:4"
+
+    # 5 pages: last page
+    row_5_4 = build_directory_pagination_row(4, 5)
+    assert len(row_5_4) == 3
+    assert row_5_4[0].callback_data == "nav_page:0"
+    assert row_5_4[1].callback_data == "nav_page:3"
+    assert row_5_4[2].callback_data == "nav_page_info"
 
 
 

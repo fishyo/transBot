@@ -24,6 +24,8 @@ WAITING_FOR_DIR = 1
 WAITING_FOR_NEW_DIR_NAME = 2
 WAITING_FOR_RENAME = 3
 
+DIR_PAGE_SIZE = 10
+
 # Instantiate singletons/helpers
 transmission = TransmissionWrapper()
 storage = Storage()
@@ -174,14 +176,52 @@ def extract_torrents_from_text(text: str) -> list:
             results.append(item_clean)
     return results
 
+def get_directory_page_slice(total_items: int, current_page: int, page_size: int = DIR_PAGE_SIZE) -> tuple[int, int, int, int]:
+    """
+    Returns (clamped_page, total_pages, start_idx, end_idx) for directory pagination.
+    """
+    total_pages = max(1, math.ceil(total_items / page_size))
+    page = max(0, min(current_page, total_pages - 1))
+    start_idx = page * page_size
+    end_idx = min(total_items, start_idx + page_size)
+    return page, total_pages, start_idx, end_idx
+
+def build_directory_pagination_row(current_page: int, total_pages: int) -> list:
+    """
+    Builds inline keyboard pagination buttons row.
+    """
+    if total_pages <= 1:
+        return []
+
+    page_nav = []
+    if total_pages <= 3:
+        if current_page > 0:
+            page_nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"nav_page:{current_page - 1}"))
+        page_nav.append(InlineKeyboardButton(f"📄 {current_page + 1}/{total_pages}", callback_data="nav_page_info"))
+        if current_page < total_pages - 1:
+            page_nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"nav_page:{current_page + 1}"))
+    else:
+        if current_page > 0:
+            page_nav.append(InlineKeyboardButton("⏮ 1", callback_data="nav_page:0"))
+            page_nav.append(InlineKeyboardButton("◀️", callback_data=f"nav_page:{current_page - 1}"))
+        page_nav.append(InlineKeyboardButton(f"📄 {current_page + 1}/{total_pages}", callback_data="nav_page_info"))
+        if current_page < total_pages - 1:
+            page_nav.append(InlineKeyboardButton("▶️", callback_data=f"nav_page:{current_page + 1}"))
+            page_nav.append(InlineKeyboardButton(f"{total_pages} ⏭", callback_data=f"nav_page:{total_pages - 1}"))
+    return page_nav
+
 async def show_directory_browser(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None):
-    """Renders the directory browser inline keyboard."""
+    """Renders the directory browser inline keyboard with pagination."""
     current_path = context.user_data.get("current_browse_path", "/downloads")
     
     # Get subdirectories
     subdirs = get_subdirs(current_path)
     # Store subdirs in context for lookup
     context.user_data["browse_subdirs"] = subdirs
+
+    raw_page = context.user_data.get("browse_page", 0)
+    current_page, total_pages, start_idx, end_idx = get_directory_page_slice(len(subdirs), raw_page, DIR_PAGE_SIZE)
+    context.user_data["browse_page"] = current_page
     
     pending_torrents = context.user_data.get("pending_torrents", [])
     if not pending_torrents and "pending_torrent" in context.user_data:
@@ -198,19 +238,29 @@ async def show_directory_browser(update: Update, context: ContextTypes.DEFAULT_T
     ]
     if has_pending:
         msg_lines.append(f"🔗 <b>Pending Downloads:</b> <code>{pending_count}</code> item(s)")
+
+    if total_pages > 1:
+        msg_lines.append(f"📁 <b>Folders:</b> <code>{len(subdirs)}</code> (Page {current_page + 1}/{total_pages})")
+    elif subdirs:
+        msg_lines.append(f"📁 <b>Folders:</b> <code>{len(subdirs)}</code>")
+    else:
+        msg_lines.append("📁 <i>No subdirectories in this folder.</i>")
         
     msg_lines.append("\nSelect a folder below to navigate inside it, or choose one of the options:")
     msg = "\n".join(msg_lines)
     
     keyboard = []
     
-    # List subdirectories (limit to 10 to keep menu readable)
-    for idx, path in enumerate(subdirs[:10]):
+    # List subdirectories for current page
+    for idx in range(start_idx, end_idx):
+        path = subdirs[idx]
         name = os.path.basename(path)
         keyboard.append([InlineKeyboardButton(f"📁 {name}", callback_data=f"nav_sub:{idx}")])
         
-    if len(subdirs) > 10:
-        keyboard.append([InlineKeyboardButton(f"➕ ... and {len(subdirs) - 10} more folders", callback_data="noop")])
+    # Pagination controls
+    pagination_row = build_directory_pagination_row(current_page, total_pages)
+    if pagination_row:
+        keyboard.append(pagination_row)
 
     # Confirmation and creation buttons
     confirm_text = f"✅ Download ({pending_count}) to Here" if (has_pending and pending_count > 1) else ("✅ Select for Download" if has_pending else "📌 Set as Default Path")
@@ -239,7 +289,11 @@ async def show_directory_browser(update: Update, context: ContextTypes.DEFAULT_T
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     if query:
-        await query.edit_message_text(msg, parse_mode="HTML", reply_markup=reply_markup)
+        try:
+            await query.edit_message_text(msg, parse_mode="HTML", reply_markup=reply_markup)
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                logger.error(f"Error updating directory browser: {e}")
     else:
         await update.message.reply_text(msg, parse_mode="HTML", reply_markup=reply_markup)
 
@@ -277,8 +331,9 @@ async def handle_torrent_input(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data["pending_torrents"] = torrents
     context.user_data["pending_filename"] = file_name
     
-    # Initialize the browse path to /downloads
+    # Initialize the browse path to /downloads and page to 0
     context.user_data["current_browse_path"] = "/downloads"
+    context.user_data["browse_page"] = 0
 
     # Start directory browsing
     await show_directory_browser(update, context)
@@ -314,6 +369,8 @@ async def process_torrent_addition(update: Update, context: ContextTypes.DEFAULT
     context.user_data.pop("pending_torrent", None)
     context.user_data.pop("pending_filename", None)
     context.user_data.pop("current_browse_path", None)
+    context.user_data.pop("browse_page", None)
+    context.user_data.pop("browse_subdirs", None)
 
     escaped_dir = html.escape(download_dir)
 
@@ -380,7 +437,26 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         subdirs = context.user_data.get("browse_subdirs", [])
         if 0 <= idx < len(subdirs):
             context.user_data["current_browse_path"] = subdirs[idx]
+            context.user_data["browse_page"] = 0
             await show_directory_browser(update, context, query=query)
+        return WAITING_FOR_DIR
+
+    elif data.startswith("nav_page:"):
+        target_page = int(data.split(":")[1])
+        subdirs = context.user_data.get("browse_subdirs", [])
+        _, total_pages, _, _ = get_directory_page_slice(len(subdirs), 0, DIR_PAGE_SIZE)
+        if 0 <= target_page < total_pages:
+            context.user_data["browse_page"] = target_page
+            await show_directory_browser(update, context, query=query)
+        else:
+            await query.answer("Page out of range.")
+        return WAITING_FOR_DIR
+
+    elif data == "nav_page_info":
+        subdirs = context.user_data.get("browse_subdirs", [])
+        raw_page = context.user_data.get("browse_page", 0)
+        curr_page, total_pages, _, _ = get_directory_page_slice(len(subdirs), raw_page, DIR_PAGE_SIZE)
+        await query.answer(f"Page {curr_page + 1} of {total_pages} ({len(subdirs)} folders total)")
         return WAITING_FOR_DIR
 
     elif data == "nav_parent":
@@ -391,6 +467,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             if parent_path == "/":
                 parent_path = "/downloads"
             context.user_data["current_browse_path"] = parent_path
+            context.user_data["browse_page"] = 0
             await show_directory_browser(update, context, query=query)
         return WAITING_FOR_DIR
 
@@ -428,6 +505,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 return ConversationHandler.END
             else:
                 context.user_data["current_browse_path"] = selected_dir
+                context.user_data["browse_page"] = 0
                 await show_directory_browser(update, context, query=query)
                 return WAITING_FOR_DIR
 
@@ -451,7 +529,17 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         return WAITING_FOR_NEW_DIR_NAME
 
     elif data == "noop":
-        await query.answer("Too many directories. Navigate into specific folders to view subdirs.", show_alert=True)
+        subdirs = context.user_data.get("browse_subdirs", [])
+        if len(subdirs) > DIR_PAGE_SIZE:
+            current_page = context.user_data.get("browse_page", 0)
+            next_page = current_page + 1
+            if next_page * DIR_PAGE_SIZE < len(subdirs):
+                context.user_data["browse_page"] = next_page
+            else:
+                context.user_data["browse_page"] = 0
+            await show_directory_browser(update, context, query=query)
+            return WAITING_FOR_DIR
+        await query.answer("No additional folders.")
         return WAITING_FOR_DIR
 
     elif data == "dir_cancel":
@@ -459,6 +547,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data.pop("pending_torrent", None)
         context.user_data.pop("pending_filename", None)
         context.user_data.pop("current_browse_path", None)
+        context.user_data.pop("browse_page", None)
+        context.user_data.pop("browse_subdirs", None)
         await query.edit_message_text("❌ Download canceled.")
         return ConversationHandler.END
 
@@ -568,6 +658,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif data == "nav_start":
         context.user_data["current_browse_path"] = "/downloads"
+        context.user_data["browse_page"] = 0
         context.user_data.pop("pending_torrents", None)
         context.user_data.pop("pending_torrent", None)  # Ensure not adding torrent
         await show_directory_browser(update, context, query=query)
@@ -675,6 +766,8 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.pop("pending_torrent", None)
     context.user_data.pop("pending_filename", None)
     context.user_data.pop("current_browse_path", None)
+    context.user_data.pop("browse_page", None)
+    context.user_data.pop("browse_subdirs", None)
     await update.message.reply_text("❌ Canceled.", reply_markup=None)
     return ConversationHandler.END
 
@@ -784,6 +877,7 @@ async def dirs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays recently used and default download directories with interactive options."""
     # Initialize browse path to /downloads
     context.user_data["current_browse_path"] = "/downloads"
+    context.user_data["browse_page"] = 0
     # Ensure there's no pending torrent (since we started from /dirs)
     context.user_data.pop("pending_torrents", None)
     context.user_data.pop("pending_torrent", None)

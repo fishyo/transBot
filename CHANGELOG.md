@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed (修复)
+- **Directory Browser Pagination (目录浏览器分页与加载更多文件夹)**:
+  - Fixed an issue where folders beyond the first 10 could not be loaded or viewed in the directory selection browser due to a placeholder "noop" button.
+  - Implemented interactive multi-page navigation (`◀️ Prev`, `📄 Page X/Y`, `Next ▶️`, and `⏮ 1` / `N ⏭` fast-jump controls) with 10 folders per page.
+  - Added unit test coverage for directory pagination and button construction in `tests/test_bot.py`.
+
+---
+
 ## [v1.1.0] - 2026-08-05
 
 ### Added (新增)
