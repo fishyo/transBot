@@ -25,6 +25,25 @@ WAITING_FOR_NEW_DIR_NAME = 2
 WAITING_FOR_RENAME = 3
 
 DIR_PAGE_SIZE = 10
+MANAGE_PAGE_SIZE = 8
+
+def filter_manage_torrents(torrents: list, filter_mode: str) -> list:
+    """Filters torrent list according to manage category."""
+    if filter_mode == "active":
+        return [t for t in torrents if t.status in ["downloading", "seeding", "verifying", "checking"]]
+    elif filter_mode == "paused":
+        return [t for t in torrents if t.status in ["stopped", "paused"]]
+    elif filter_mode == "complete":
+        return [t for t in torrents if getattr(t, 'progress', 0.0) >= 100.0 or getattr(t, 'left_until_done', 1) == 0]
+    return torrents
+
+def get_manage_page_slice(total_items: int, current_page: int, page_size: int = MANAGE_PAGE_SIZE) -> tuple[int, int, int, int]:
+    """Returns (clamped_page, total_pages, start_idx, end_idx) for manage pagination."""
+    total_pages = max(1, math.ceil(total_items / page_size))
+    page = max(0, min(current_page, total_pages - 1))
+    start_idx = page * page_size
+    end_idx = min(total_items, start_idx + page_size)
+    return page, total_pages, start_idx, end_idx
 
 # Instantiate singletons/helpers
 transmission = TransmissionWrapper()
@@ -33,8 +52,9 @@ storage = Storage()
 def check_user(func):
     """Decorator to restrict access to allowed users only."""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user_id = update.effective_user.id
-        if config.ALLOWED_USER_IDS and user_id not in config.ALLOWED_USER_IDS:
+        user_id = update.effective_user.id if update.effective_user else None
+        # Enforce strict default-deny: if ALLOWED_USER_IDS is empty, deny everyone
+        if not config.ALLOWED_USER_IDS or user_id not in config.ALLOWED_USER_IDS:
             logger.warning(f"Unauthorized access attempt by user_id: {user_id}")
             if update.message:
                 await update.message.reply_text("⛔️ You are not authorized to use this bot.")
@@ -104,20 +124,31 @@ def format_eta(eta) -> str:
 
 @check_user
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sends start message."""
+    """Sends start dashboard message with quick navigation buttons."""
     welcome_text = (
-        "👋 <b>Welcome to Transmission Telegram Bot!</b>\n\n"
-        "Send me a magnet link, a torrent URL, or upload a `.torrent` file, "
+        "👋 <b>Welcome to Transmission Bot!</b>\n\n"
+        "Send me a magnet link, a torrent URL, or upload a <code>.torrent</code> file, "
         "and I will help you download it directly to your Transmission client.\n\n"
-        "<b>Available Commands:</b>\n"
-        "📊 /status - View real-time download progress and disk space\n"
-        "🎛️ /manage - Interactive center to pause, resume, delete, or rename torrents\n"
-        "📂 /dirs - Set default path or browse directory structure\n"
-        "🐢 /turtle - Toggle Alternative Speed Limits (Turtle Mode) ON/OFF\n"
-        "❌ /cancel - Reset and abort any active input or directory navigation\n"
-        "❓ /help - View detailed user guide"
+        "⚡️ <b>Quick Controls / 快捷功能入口：</b>"
     )
-    await update.message.reply_text(welcome_text, parse_mode="HTML")
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 运行状态", callback_data="status_refresh"),
+            InlineKeyboardButton("🎛️ 任务管理", callback_data="m_refresh_list")
+        ],
+        [
+            InlineKeyboardButton("🐢 海龟限速", callback_data="quick_toggle_turtle"),
+            InlineKeyboardButton("📂 目录设置", callback_data="nav_start")
+        ],
+        [
+            InlineKeyboardButton("❓ 使用指南", callback_data="quick_help")
+        ]
+    ]
+    await update.message.reply_text(
+        welcome_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 @check_user
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -573,6 +604,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             transmission.resume_torrent(torrent_id)
             await query.answer(f"▶️ Resumed: {t.name[:20]}")
         elif action == "delete":
+            escaped_name = html.escape(t.name)
             keyboard = [
                 [
                     InlineKeyboardButton("🗑 Keep Data", callback_data=f"tdel_keep_{torrent_id}"),
@@ -581,8 +613,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 [InlineKeyboardButton("↩️ Back", callback_data="status_refresh")]
             ]
             await query.edit_message_text(
-                f"🗑 **Confirm Delete**\n\nAre you sure you want to remove:\n`{t.name}`?",
-                parse_mode="Markdown",
+                f"🗑 <b>Confirm Delete</b>\n\nAre you sure you want to remove:\n<code>{escaped_name}</code>?",
+                parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
             return
@@ -606,8 +638,52 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             
         await display_status(update, context, is_callback=True)
 
+    elif data == "quick_toggle_turtle":
+        try:
+            client = transmission.get_client()
+            session = client.get_session()
+            new_state = not session.alt_speed_enabled
+            client.set_session(alt_speed_enabled=new_state)
+            state_text = "ON 🐢 (已开启限速)" if new_state else "OFF ⚡ (全速下载)"
+            await query.answer(f"🐢 海龟模式: {state_text}", show_alert=True)
+            await display_status(update, context, is_callback=True)
+        except Exception as e:
+            await query.answer(f"❌ 切换失败: {e}", show_alert=True)
+        return
+
+    elif data == "quick_help":
+        help_text = (
+            "💡 <b>快速使用指南 / Quick Guide:</b>\n\n"
+            "1. <b>直接发送种子</b>：在聊天窗口直接发送 <code>magnet:?</code> 磁力链、HTTP 种子链接或上传 <code>.torrent</code> 文件。\n"
+            "2. <b>目录浏览与新建</b>：选定种子后可交互式点击浏览文件夹，或点击【🆕 Create Folder Here】即时新建子目录。\n"
+            "3. <b>管理中心 (/manage)</b>：可根据【全部/活跃/暂停/完成】分类筛选任务并翻页，点击任务卡片可暂停、恢复、重命名或安全删除。\n"
+            "4. <b>海龟限速 (/turtle)</b>：点击【🐢 海龟限速】一键切换 Transmission 的替代带宽限制。"
+        )
+        keyboard = [[InlineKeyboardButton("↩️ 返回状态", callback_data="status_refresh")]]
+        await query.edit_message_text(help_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
     elif data == "m_refresh_list":
         await display_manage_list(update, context, is_callback=True)
+
+    elif data.startswith("m_filter:"):
+        filter_mode = data.split(":")[1]
+        context.user_data["manage_filter"] = filter_mode
+        context.user_data["manage_page"] = 0
+        await display_manage_list(update, context, is_callback=True)
+        return
+
+    elif data.startswith("m_page:"):
+        target_page = int(data.split(":")[1])
+        context.user_data["manage_page"] = target_page
+        await display_manage_list(update, context, is_callback=True)
+        return
+
+    elif data == "m_page_info":
+        page = context.user_data.get("manage_page", 0)
+        filter_mode = context.user_data.get("manage_filter", "all")
+        await query.answer(f"当前第 {page + 1} 页 (分类: {filter_mode})")
+        return
 
     elif data == "m_close":
         await query.edit_message_text("🎛️ Management center closed.")
@@ -785,7 +861,16 @@ async def display_status(update: Update, context: ContextTypes.DEFAULT_TYPE, is_
         return
     if not torrents:
         msg = "📭 No torrents in Transmission."
-        keyboard = [[InlineKeyboardButton("🔄 Refresh", callback_data="status_refresh")]]
+        keyboard = [
+            [
+                InlineKeyboardButton("🔄 刷新状态", callback_data="status_refresh"),
+                InlineKeyboardButton("🎛️ 任务管理", callback_data="m_refresh_list")
+            ],
+            [
+                InlineKeyboardButton("🐢 海龟限速", callback_data="quick_toggle_turtle"),
+                InlineKeyboardButton("📂 目录浏览", callback_data="nav_start")
+            ]
+        ]
         if is_callback:
             await update.callback_query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
@@ -845,7 +930,14 @@ async def display_status(update: Update, context: ContextTypes.DEFAULT_TYPE, is_
     if len(sorted_torrents) > display_limit:
         msg_lines.append(f"\n<i>... and {len(sorted_torrents) - display_limit} more torrents.</i>")
 
-    keyboard.append([InlineKeyboardButton("🔄 Refresh Status", callback_data="status_refresh")])
+    keyboard.append([
+        InlineKeyboardButton("🔄 刷新状态", callback_data="status_refresh"),
+        InlineKeyboardButton("🎛️ 任务管理", callback_data="m_refresh_list")
+    ])
+    keyboard.append([
+        InlineKeyboardButton("🐢 海龟限速", callback_data="quick_toggle_turtle"),
+        InlineKeyboardButton("📂 目录浏览", callback_data="nav_start")
+    ])
 
     full_msg = "\n".join(msg_lines)
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1007,7 +1099,7 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await display_manage_list(update, context, is_callback=False)
 
 async def display_manage_list(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback=False):
-    """Displays list of torrents as buttons for management."""
+    """Displays paginated and filtered list of torrents as buttons for management."""
     try:
         torrents = transmission.get_torrents()
     except Exception as e:
@@ -1018,45 +1110,97 @@ async def display_manage_list(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             await update.message.reply_text(msg)
         return
+        
     if not torrents:
-        msg = "📭 No torrents to manage."
+        msg = "📭 Transmission 中暂无任何种子任务。"
+        keyboard = [
+            [
+                InlineKeyboardButton("🔄 刷新", callback_data="m_refresh_list"),
+                InlineKeyboardButton("📊 运行状态", callback_data="status_refresh")
+            ],
+            [InlineKeyboardButton("❌ 关闭", callback_data="m_close")]
+        ]
         if is_callback:
-            await update.callback_query.edit_message_text(msg)
+            await update.callback_query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
-            await update.message.reply_text(msg)
+            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # Sort torrents
+    # Filter and sort torrents
+    filter_mode = context.user_data.get("manage_filter", "all")
+    filtered_torrents = filter_manage_torrents(torrents, filter_mode)
+
     active_statuses = ["downloading", "seeding", "verifying", "checking"]
     sorted_torrents = sorted(
-        torrents,
-        key=lambda x: (x.status in active_statuses, x.added_date),
+        filtered_torrents,
+        key=lambda x: (x.status in active_statuses, getattr(x, 'added_date', 0)),
         reverse=True
     )
 
-    msg = "🎛️ <b>Transmission Manage Center</b>\n\nSelect a torrent below to control it:"
+    # Pagination calculation
+    raw_page = context.user_data.get("manage_page", 0)
+    page, total_pages, start_idx, end_idx = get_manage_page_slice(len(sorted_torrents), raw_page, MANAGE_PAGE_SIZE)
+    context.user_data["manage_page"] = page
+    page_torrents = sorted_torrents[start_idx:end_idx]
+
+    filter_name_map = {"all": "全部", "active": "活跃", "paused": "暂停", "complete": "完成"}
+    filter_desc = filter_name_map.get(filter_mode, "全部")
+
+    msg_lines = [
+        "🎛️ <b>Transmission 任务管理中心</b>\n",
+        f"📌 分类：<b>{filter_desc}</b> ({len(sorted_torrents)} 个任务)" + (f" | <b>{page + 1}/{total_pages} 页</b>" if total_pages > 1 else ""),
+        "点击下方任务卡片进行控制或改名："
+    ]
+    if not page_torrents:
+        msg_lines.append("\n<i>该分类下暂无匹配任务。</i>")
+
+    msg = "\n".join(msg_lines)
     keyboard = []
 
-    for t in sorted_torrents[:15]:  # Show top 15
+    # 1. Filter tabs row
+    filter_row = [
+        InlineKeyboardButton(f"{'✅ ' if filter_mode == 'all' else ''}全部", callback_data="m_filter:all"),
+        InlineKeyboardButton(f"{'✅ ' if filter_mode == 'active' else ''}活跃", callback_data="m_filter:active"),
+        InlineKeyboardButton(f"{'✅ ' if filter_mode == 'paused' else ''}暂停", callback_data="m_filter:paused"),
+        InlineKeyboardButton(f"{'✅ ' if filter_mode == 'complete' else ''}完成", callback_data="m_filter:complete"),
+    ]
+    keyboard.append(filter_row)
+
+    # 2. Torrent items for current page
+    for t in page_torrents:
         status_emoji = "⏳"
         if t.status == "downloading":
             status_emoji = "📥"
         elif t.status == "seeding":
             status_emoji = "📤"
-        elif t.status == "stopped" or t.status == "paused":
+        elif t.status in ["stopped", "paused"]:
             status_emoji = "⏸"
+        elif t.status in ["checking", "verifying"]:
+            status_emoji = "🔍"
             
         short_name = t.name
-        if len(short_name) > 25:
-            short_name = short_name[:22] + "..."
+        if len(short_name) > 28:
+            short_name = short_name[:25] + "..."
             
         btn_text = f"{status_emoji} {short_name} ({t.progress:.0f}%)"
         keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"m_select:{t.id}")])
 
-    if len(sorted_torrents) > 15:
-        msg += f"\n\n<i>Showing top 15 out of {len(sorted_torrents)} torrents.</i>"
+    # 3. Pagination controls row
+    if total_pages > 1:
+        page_nav = []
+        if page > 0:
+            page_nav.append(InlineKeyboardButton("◀️ 上一页", callback_data=f"m_page:{page - 1}"))
+        page_nav.append(InlineKeyboardButton(f"📄 {page + 1}/{total_pages}", callback_data="m_page_info"))
+        if page < total_pages - 1:
+            page_nav.append(InlineKeyboardButton("下一页 ▶️", callback_data=f"m_page:{page + 1}"))
+        keyboard.append(page_nav)
 
-    keyboard.append([InlineKeyboardButton("❌ Close", callback_data="m_close")])
+    # 4. Actions row
+    keyboard.append([
+        InlineKeyboardButton("🔄 刷新", callback_data="m_refresh_list"),
+        InlineKeyboardButton("📊 状态", callback_data="status_refresh"),
+        InlineKeyboardButton("❌ 关闭", callback_data="m_close")
+    ])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 

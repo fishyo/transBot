@@ -303,5 +303,78 @@ def test_build_directory_pagination_row():
     assert row_5_4[2].callback_data == "nav_page_info"
 
 
+def test_filter_manage_torrents():
+    from bot.handlers import filter_manage_torrents
+    t1 = MockTorrent(status="downloading", progress=50.0, left_until_done=500)
+    t2 = MockTorrent(status="stopped", progress=20.0, left_until_done=800)
+    t3 = MockTorrent(status="seeding", progress=100.0, left_until_done=0)
+    t4 = MockTorrent(status="paused", progress=100.0, left_until_done=0)
+
+    torrents = [t1, t2, t3, t4]
+
+    assert filter_manage_torrents(torrents, "all") == [t1, t2, t3, t4]
+    assert filter_manage_torrents(torrents, "active") == [t1, t3]
+    assert filter_manage_torrents(torrents, "paused") == [t2, t4]
+    assert filter_manage_torrents(torrents, "complete") == [t3, t4]
+
+
+def test_get_manage_page_slice():
+    from bot.handlers import get_manage_page_slice
+    # 0 items
+    assert get_manage_page_slice(0, 0, 8) == (0, 1, 0, 0)
+    # 8 items
+    assert get_manage_page_slice(8, 0, 8) == (0, 1, 0, 8)
+    # 9 items (2 pages)
+    assert get_manage_page_slice(9, 0, 8) == (0, 2, 0, 8)
+    assert get_manage_page_slice(9, 1, 8) == (1, 2, 8, 9)
+    # Clamp out of bound
+    assert get_manage_page_slice(9, 5, 8) == (1, 2, 8, 9)
+    assert get_manage_page_slice(9, -1, 8) == (0, 2, 0, 8)
+
+
+@pytest.mark.asyncio
+async def test_check_user_strict_security():
+    from bot.handlers import check_user
+    import bot.config as config
+    from unittest.mock import AsyncMock, MagicMock
+
+    called = False
+
+    @check_user
+    async def sample_handler(update, context):
+        nonlocal called
+        called = True
+        return "success"
+
+    mock_update = MagicMock()
+    mock_update.effective_user.id = 12345
+    mock_update.message = AsyncMock()
+    mock_update.callback_query = None
+    mock_context = MagicMock()
+
+    # Case 1: Empty ALLOWED_USER_IDS -> Must strictly deny access!
+    config.ALLOWED_USER_IDS = []
+    called = False
+    res = await sample_handler(mock_update, mock_context)
+    assert called is False
+    assert res is None
+    mock_update.message.reply_text.assert_called_with("⛔️ You are not authorized to use this bot.")
+
+    # Case 2: User not in allowed list -> Deny access
+    config.ALLOWED_USER_IDS = [99999]
+    called = False
+    res = await sample_handler(mock_update, mock_context)
+    assert called is False
+    assert res is None
+
+    # Case 3: User in allowed list -> Allow access
+    config.ALLOWED_USER_IDS = [12345, 99999]
+    called = False
+    res = await sample_handler(mock_update, mock_context)
+    assert called is True
+    assert res == "success"
+
+
+
 
 

@@ -1,5 +1,6 @@
 import logging
 import sys
+from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
 import bot.config as config
 from bot.handlers import (
@@ -48,6 +49,21 @@ async def on_startup(application):
         )
     else:
         logger.info(f"Authorized users: {config.ALLOWED_USER_IDS}")
+
+    # Register bot commands for Telegram UI menu
+    try:
+        commands = [
+            BotCommand("status", "📊 运行状态与磁盘容量"),
+            BotCommand("manage", "🎛️ 任务管理中心(暂停/删除/改名)"),
+            BotCommand("dirs", "📂 下载目录浏览与设置"),
+            BotCommand("turtle", "🐢 切换海龟限速模式"),
+            BotCommand("help", "❓ 使用指南与功能说明"),
+            BotCommand("cancel", "❌ 取消当前操作或对话"),
+        ]
+        await application.bot.set_my_commands(commands)
+        logger.info("Successfully registered Telegram bot command menu.")
+    except Exception as e:
+        logger.warning(f"Failed to register Telegram bot commands: {e}")
 
 def main():
     """Main application runner."""

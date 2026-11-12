@@ -1,136 +1,113 @@
-# Transbot - Transmission Telegram Bot 🚀
+# transBot
 
-[![Language](https://img.shields.io/badge/Language-English-blue.svg)](README.md)
-[![语言](https://img.shields.io/badge/语言-简体中文-red.svg)](README_zh.md)
-[![Python Tests and Docker Release](https://github.com/fishyo/transBot/actions/workflows/tests.yml/badge.svg)](https://github.com/fishyo/transBot/actions/workflows/tests.yml)
-[![GHCR Registry](https://img.shields.io/badge/registry-ghcr.io%2Ffishyo%2Ftransbot-blue?logo=docker&logoColor=white)](https://github.com/fishyo/transBot/pkgs/container/transbot)
-[![Docker Image Version](https://img.shields.io/badge/version-latest-brightgreen?logo=github)](https://github.com/fishyo/transBot/pkgs/container/transbot)
+[![Tests](https://github.com/fishyo/transBot/actions/workflows/tests.yml/badge.svg)](https://github.com/fishyo/transBot/actions/workflows/tests.yml)
+[![Docker Image](https://img.shields.io/badge/docker-ghcr.io%2Ffishyo%2Ftransbot-blue?logo=docker&logoColor=white)](https://github.com/fishyo/transBot/pkgs/container/transbot)
 
 [English](README.md) | [简体中文](README_zh.md) | [更新日志](CHANGELOG.md)
 
----
-
-这是一个专为个人 NAS/OMV 挂载环境打造的 **Transmission Telegram 智能控制机器人**。它能通过 Telegram 消息，让您随时随地远程控制下载、监控磁盘空间、管理种子，以及接收下载完成推送。
-
-本项目现已通过 GitHub Actions 实现持续集成与持续部署（CI/CD），并在 **GitHub Container Registry (GHCR)** 发布了预编译的 Docker 镜像包，支持 SemVer 语义化版本标签（`v*.*.*`）。您无需在 NAS 上安装任何开发依赖，即可直接一键拉取运行。
+通过 Telegram 管理 Transmission 下载任务的机器人。支持接收磁力链接与种子文件、多级目录选择、任务管理、磁盘监控及完成推送。
 
 ---
 
-## 🌟 主要功能特点
+## 功能说明
 
-1. **🔗 批量添加任务与多链接解析**：可以在单条 Telegram 消息中发送单个或**多个磁力链接 (Magnet Link)**、**种子 URL 地址**，或上传 **`.torrent` 种子文件**，机器人会自动批量解析提取并逐一添加下载任务。
-2. **📂 交互式目录浏览器与近期路径管理**：添加种子时唤起直观的**多级目录选择器**，支持直接创建新文件夹、展示并快速选择近期使用过的下载路径，并支持单条删除或一键清空近期历史。
-3. **📊 超简洁状态监控 (`/status`)**：精简版展示正在下载/做种的任务状态，实时显示 OMV 挂载硬盘的剩余空间以及备用限速（乌龟模式）状态。
-4. **🎛️ 独立控制中心 (`/manage`)**：支持对具体种子进行单独管理，提供暂停/恢复、删除（可选保留或删除本地数据）及**直接重命名文件夹/文件**的功能。
-5. **🐢 乌龟限速模式一键切换 (`/turtle`)**：一键开关 Transmission 备用速度限制，方便网络错峰管理。
-6. **🔔 多渠道完成通知推送**：后台常驻 poller 进程，下载完成时自动发送 Telegram 消息通知，并支持可选的 **SMTP 邮件推送**（采用现代极简收据风 HTML 模板，适配各类邮件客户端）。
-7. **🐳 生产级 SemVer 免编译部署**：使用 GitHub Actions 自动构建，支持按 Git Tag 自动版本打标并发布至 GHCR，NAS 部署无需本地 `build`，开箱即用。
-8. **🛡️ 用户权限锁与安全保障**：在配置中锁定您的专属 Telegram ID。对新建文件夹名称使用 `os.path.commonpath` 进行校验，防范路径越界和目录逃逸。
-
----
-
-## 🛠️ 指令手册
-
-* `/status` - **查看状态**。获取下载/做种简表、实时速度、Peers 连接数、磁盘可用空间及限速模式。
-* `/manage` - **控制中心**。提供种子的暂停、继续、删除及**重命名**等操作入口。
-* `/dirs` - **目录管理**。查看当前默认保存路径、快速选择近期使用目录，支持删除与清空近期路径，或浏览文件夹将其设为全局默认。
-* `/turtle` - **限速开关**。一键切换 Transmission 的乌龟限速模式。
-* `/cancel` - **取消会话**。随时终止新建文件夹、目录导航或重命名等输入对话。
-* `/help` - **使用手册**。输出详细的功能与指令对照指南。
+- **添加任务**：直接向机器人发送单条或多条磁力链接、HTTP 种子链接，或直接发送 `.torrent` 文件。
+- **目录浏览与选择**：添加任务时支持在内联键盘中选择目标保存路径，或直接在界面中新建子目录。
+- **任务管理 (`/manage`)**：提供内联操作面板，支持按状态（全部 / 活跃 / 暂停 / 完成）筛选和分页浏览，可对单个任务执行暂停、继续、重命名或删除（可选手选是否保留数据文件）。
+- **状态监控 (`/status`)**：查看下载与做种速度、Peers 连接数、任务进度、磁盘剩余容量及海龟模式状态。
+- **海龟限速 (`/turtle`)**：快速开启或关闭 Transmission 的备用速度限制。
+- **完成通知**：任务下载完成后自动向 Telegram 发送通知，支持可选的 SMTP 邮件推送。
+- **访问控制**：通过配置白名单限制可操作机器人的 Telegram 用户 ID。
 
 ---
 
-## 🚀 部署配置步骤 (OMV/NAS)
+## 常用命令
 
-### 1. 准备环境变量 (`.env`)
-在您的 NAS 部署目录下创建一个 `.env` 文件，填写以下内容：
+| 命令 | 说明 |
+| :--- | :--- |
+| `/status` | 查看当前下载/做种状态、传输速度与磁盘容量 |
+| `/manage` | 打开任务管理中心，支持筛选、分页、改名与删除 |
+| `/dirs` | 查看默认下载路径，管理最近使用路径或浏览文件夹 |
+| `/turtle` | 切换海龟限速模式（ON / OFF） |
+| `/help` | 查看使用指南 |
+| `/cancel` | 取消当前的目录选择、新建文件夹或改名操作 |
+
+---
+
+## 部署运行 (Docker Compose)
+
+### 1. 准备配置文件
+
+在部署目录下创建 `.env` 文件：
 
 ```ini
-# Telegram 机器人 Token (通过 @BotFather 获取)
-TELEGRAM_TOKEN=您的_BOT_TOKEN
+# Telegram Bot Token（向 @BotFather 获取）
+TELEGRAM_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
 
-# 授权可访问机器人的用户 Telegram ID 列表 (通过 @userinfobot 获取)，多用户用英文逗号分隔
-ALLOWED_USER_IDS=your_telegram_id_here
+# 允许使用机器人的 Telegram 用户 ID（向 @userinfobot 获取），多个用逗号分隔
+ALLOWED_USER_IDS=12345678,87654321
 
-# 本地 Transmission RPC 服务的连接参数
+# Transmission RPC 连接配置
 TRANSMISSION_HOST=127.0.0.1
 TRANSMISSION_PORT=9091
-TRANSMISSION_USER=您的用户名
-TRANSMISSION_PASSWORD=您的密码
+TRANSMISSION_USER=
+TRANSMISSION_PASSWORD=
 TRANSMISSION_PATH=/transmission/rpc
 
-# 机器人基本设置
+# 默认设置
 DEFAULT_DOWNLOAD_DIR=/downloads/complete
 POLL_INTERVAL=10
 
-# 邮件通知设置 (可选)
-ENABLE_EMAIL_NOTIFICATION=true
-SMTP_SERVER=smtp.qq.com
+# 邮件通知配置（可选）
+ENABLE_EMAIL_NOTIFICATION=false
+SMTP_SERVER=smtp.example.com
 SMTP_PORT=465
-SMTP_USER=your_email@qq.com
-SMTP_PASSWORD=your_smtp_auth_code
+SMTP_USER=user@example.com
+SMTP_PASSWORD=your_password
 SMTP_USE_SSL=true
 EMAIL_TO=recipient@example.com
 ```
 
-### 2. 配置 Compose 编排 (`docker-compose.yml`)
-在同目录下创建 `docker-compose.yml` 文件：
+### 2. 编写 `docker-compose.yml`
 
 ```yaml
 version: '3.8'
 
 services:
   transmission-bot:
-    image: ghcr.io/fishyo/transbot:latest  # 直接从 GHCR 拉取官方打包镜像
+    image: ghcr.io/fishyo/transbot:latest
     container_name: transmission-telegram-bot
     restart: unless-stopped
     volumes:
-      # 挂载数据持久化目录
       - ./data:/app/data
-      # 挂载您的 NAS 存储/下载目录（必须与 Transmission 的实际下载根路径映射一致）
-      - /srv/dev-disk-by-uuid-XXXXXX/downloads:/downloads
+      # 映射实际的下载路径，保持与 Transmission 容器一致
+      - /path/to/your/downloads:/downloads
     env_file:
       - .env
 ```
 
-### 3. 启动容器
-在终端中进入该目录，直接运行：
+### 3. 启动服务
 
 ```bash
-# 拉取最新镜像
 docker compose pull
-
-# 启动容器并后台运行
 docker compose up -d
 ```
 
-### 4. 日常维护常用命令
-* **查看运行日志**：`docker compose logs -f`
-* **重启机器人**（例如在更新 `.env` 之后）：`docker compose restart`
-* **停止运行**：`docker compose down`
+查看运行日志：
+```bash
+docker compose logs -f
+```
 
 ---
 
-## 🧪 开发者指南 (Developer Guide)
+## 本地开发与测试
 
-如果您想对本项目进行二次开发或本地贡献：
-
-### 1. 本地开发环境初始化
 ```bash
-# 创建并激活虚拟环境
+# 1. 创建虚拟环境并安装依赖
 python -m venv .venv
-source .venv/bin/activate  # Windows 下使用: .\.venv\Scripts\activate
+source .venv/bin/activate  # Windows: .\.venv\Scripts\activate
+pip install -r requirements.txt pytest-asyncio
 
-# 安装开发与运行依赖
-pip install -r requirements.txt
+# 2. 运行测试
+TELEGRAM_TOKEN="123456:dummy_token" pytest
 ```
-
-### 2. 运行本地单元测试
-项目引入了 `pytest` 用于保障关键格式化和防目录逃逸的安全校验：
-```bash
-python -m pytest
-```
-
-### 3. CI/CD 工作流
-* 每次推送代码到 `main`/`master` 分支或提交 PR 时，GitHub Actions 会自动运行测试。
-* 测试成功后，会自动触发 Docker 镜像打包，并推送最新版至 `ghcr.io/fishyo/transbot:latest`。
