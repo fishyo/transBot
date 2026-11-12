@@ -332,47 +332,50 @@ def test_get_manage_page_slice():
     assert get_manage_page_slice(9, -1, 8) == (0, 2, 0, 8)
 
 
-@pytest.mark.asyncio
-async def test_check_user_strict_security():
+def test_check_user_strict_security():
+    import asyncio
     from bot.handlers import check_user
     import bot.config as config
     from unittest.mock import AsyncMock, MagicMock
 
-    called = False
+    async def _async_test():
+        called = False
 
-    @check_user
-    async def sample_handler(update, context):
-        nonlocal called
-        called = True
-        return "success"
+        @check_user
+        async def sample_handler(update, context):
+            nonlocal called
+            called = True
+            return "success"
 
-    mock_update = MagicMock()
-    mock_update.effective_user.id = 12345
-    mock_update.message = AsyncMock()
-    mock_update.callback_query = None
-    mock_context = MagicMock()
+        mock_update = MagicMock()
+        mock_update.effective_user.id = 12345
+        mock_update.message = AsyncMock()
+        mock_update.callback_query = None
+        mock_context = MagicMock()
 
-    # Case 1: Empty ALLOWED_USER_IDS -> Must strictly deny access!
-    config.ALLOWED_USER_IDS = []
-    called = False
-    res = await sample_handler(mock_update, mock_context)
-    assert called is False
-    assert res is None
-    mock_update.message.reply_text.assert_called_with("⛔️ You are not authorized to use this bot.")
+        # Case 1: Empty ALLOWED_USER_IDS -> Must strictly deny access!
+        config.ALLOWED_USER_IDS = []
+        called = False
+        res = await sample_handler(mock_update, mock_context)
+        assert called is False
+        assert res is None
+        mock_update.message.reply_text.assert_called_with("⛔️ You are not authorized to use this bot.")
 
-    # Case 2: User not in allowed list -> Deny access
-    config.ALLOWED_USER_IDS = [99999]
-    called = False
-    res = await sample_handler(mock_update, mock_context)
-    assert called is False
-    assert res is None
+        # Case 2: User not in allowed list -> Deny access
+        config.ALLOWED_USER_IDS = [99999]
+        called = False
+        res = await sample_handler(mock_update, mock_context)
+        assert called is False
+        assert res is None
 
-    # Case 3: User in allowed list -> Allow access
-    config.ALLOWED_USER_IDS = [12345, 99999]
-    called = False
-    res = await sample_handler(mock_update, mock_context)
-    assert called is True
-    assert res == "success"
+        # Case 3: User in allowed list -> Allow access
+        config.ALLOWED_USER_IDS = [12345, 99999]
+        called = False
+        res = await sample_handler(mock_update, mock_context)
+        assert called is True
+        assert res == "success"
+
+    asyncio.run(_async_test())
 
 
 
